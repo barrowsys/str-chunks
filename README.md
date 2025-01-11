@@ -20,11 +20,11 @@ import `ImplStrChunks` to get methods on `str`
 Add to your Cargo.toml:
 ```
 [dependencies]
-str-chunks = "0.1.0"
+str-chunks = "0.1.1"
 ```
 See [docs.rs](https://docs.rs/str-chunks) for examples.
 
 
-or just copy [src/str_chunks.rs] into your own project. im not your mom.
+or just copy [src/str_chunks.rs] into your own project. im not your mom. dont forget to remove the `#![no_std]`
 
 

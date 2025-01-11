@@ -26,6 +26,8 @@
 //!
 //! import `ImplStrChunks` to get methods on `str`
 
+use core::num::NonZeroUsize;
+
 pub trait ImplStrChunks {
     /// Returns an iterator over `chunk_size` chars at a time,
     /// starting at the beginning of the str.
@@ -139,19 +141,23 @@ pub trait ImplStrChunks {
 impl ImplStrChunks for &str {
     fn str_chunks(&self, chunk_size: usize) -> StrChunks {
         assert!(chunk_size != 0, "chunk size must be non-zero");
-        StrChunks::new(self, chunk_size)
+        // UNWRAP: already checking chunk_size is non-zero, unwrap will be optimized out
+        StrChunks::new(self, chunk_size.try_into().unwrap())
     }
     fn str_chunks_exact(&self, chunk_size: usize) -> StrChunksExact {
         assert!(chunk_size != 0, "chunk size must be non-zero");
-        StrChunksExact::new(self, chunk_size)
+        // UNWRAP: already checking chunk_size is non-zero, unwrap will be optimized out
+        StrChunksExact::new(self, chunk_size.try_into().unwrap())
     }
     fn str_rchunks(&self, chunk_size: usize) -> StrRChunks {
         assert!(chunk_size != 0, "chunk size must be non-zero");
-        StrRChunks::new(self, chunk_size)
+        // UNWRAP: already checking chunk_size is non-zero, unwrap will be optimized out
+        StrRChunks::new(self, chunk_size.try_into().unwrap())
     }
     fn str_rchunks_exact(&self, chunk_size: usize) -> StrRChunksExact {
         assert!(chunk_size != 0, "chunk size must be non-zero");
-        StrRChunksExact::new(self, chunk_size)
+        // UNWRAP: already checking chunk_size is non-zero, unwrap will be optimized out
+        StrRChunksExact::new(self, chunk_size.try_into().unwrap())
     }
 }
 
@@ -190,13 +196,12 @@ fn valid_split_points(
 /// [`str_chunks`]: ImplStrChunks::str_chunks
 pub struct StrChunks<'s> {
     s: &'s str,
-    // chunk size must be non-zero
-    chunk_size: usize,
+    // 0 chunk_size makes no sense
+    chunk_size: NonZeroUsize,
 }
 
 impl<'s> StrChunks<'s> {
-    fn new(s: &'s str, chunk_size: usize) -> Self {
-        assert!(chunk_size != 0, "chunk size must be non-zero");
+    fn new(s: &'s str, chunk_size: NonZeroUsize) -> Self {
         Self { s, chunk_size }
     }
     #[must_use]
@@ -209,25 +214,19 @@ impl<'s> StrChunks<'s> {
 impl<'s> Iterator for StrChunks<'s> {
     type Item = &'s str;
     fn next(&mut self) -> Option<&'s str> {
-        if let Some((index, _)) = valid_split_points(self.s).nth(self.chunk_size) {
-            // SAFETY: index is a valid byte offset on the boundary of a code point by above
-            let (chunk, rest) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
-
-            self.s = rest;
-            Some(chunk)
-        } else {
-            // SAFETY: the end of a str is a valid byte offset, and is the boundary of a code point
+        let (index, _) = valid_split_points(self.s)
+            .nth(self.chunk_size.get())
+            // SAFETY: the end of a str is a valid byte offset, and is the boundary of a codepoint
             // by definition of a str.
-            let (chunk, empty) =
-                unsafe { self.s.split_at_checked(self.s.len()).unwrap_unchecked() };
-
-            self.s = empty;
-            // chunk is empty if there is no remainder or if remainder was already returned
-            if chunk.is_empty() {
-                None
-            } else {
-                Some(chunk)
-            }
+            .unwrap_or((self.s.len(), char::REPLACEMENT_CHARACTER));
+        // SAFETY: index is a valid byte offset on the boundary of a code point by above
+        let (chunk, rest) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
+        self.s = rest;
+        // chunk is empty if index is 0 and (no remainder or remainder was already returned)
+        if chunk.is_empty() {
+            None
+        } else {
+            Some(chunk)
         }
     }
 }
@@ -257,13 +256,12 @@ impl<'s> Iterator for StrChunks<'s> {
 /// [`remaining`]: StrChunksExact::remaining
 pub struct StrChunksExact<'s> {
     s: &'s str,
-    // chunk size must be non-zero
-    chunk_size: usize,
+    // 0 chunk_size makes no sense
+    chunk_size: NonZeroUsize,
 }
 
 impl<'s> StrChunksExact<'s> {
-    fn new(s: &'s str, chunk_size: usize) -> Self {
-        assert!(chunk_size != 0, "chunk size must be non-zero");
+    fn new(s: &'s str, chunk_size: NonZeroUsize) -> Self {
         Self { s, chunk_size }
     }
     #[must_use]
@@ -278,7 +276,7 @@ impl<'s> Iterator for StrChunksExact<'s> {
     type Item = &'s str;
     fn next(&mut self) -> Option<&'s str> {
         // will short-circuit None if s.len() < chunk_size, leaving the remainder in s
-        let (index, _) = valid_split_points(self.s).nth(self.chunk_size)?;
+        let (index, _) = valid_split_points(self.s).nth(self.chunk_size.get())?;
 
         // SAFETY: index is a valid byte offset on the boundary of a code point by above
         let (chunk, rest) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
@@ -312,13 +310,12 @@ impl<'s> Iterator for StrChunksExact<'s> {
 /// [`str_rchunks`]: ImplStrChunks::str_rchunks
 pub struct StrRChunks<'s> {
     s: &'s str,
-    // chunk size must be non-zero
-    chunk_size: usize,
+    // 0 chunk_size makes no sense
+    chunk_size: NonZeroUsize,
 }
 
 impl<'s> StrRChunks<'s> {
-    fn new(s: &'s str, chunk_size: usize) -> Self {
-        assert!(chunk_size != 0, "chunk size must be non-zero");
+    fn new(s: &'s str, chunk_size: NonZeroUsize) -> Self {
         Self { s, chunk_size }
     }
     #[must_use]
@@ -331,24 +328,19 @@ impl<'s> StrRChunks<'s> {
 impl<'s> Iterator for StrRChunks<'s> {
     type Item = &'s str;
     fn next(&mut self) -> Option<&'s str> {
-        if let Some((index, _)) = valid_split_points(self.s).nth_back(self.chunk_size) {
-            // SAFETY: index is a valid byte offset on the boundary of a code point by above
-            let (rest, chunk) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
-
-            self.s = rest;
-            Some(chunk)
-        } else {
-            // SAFETY: the start of a str is a valid byte offset, and is the boundary of a code point
+        let (index, _) = valid_split_points(self.s)
+            .nth_back(self.chunk_size.get())
+            // SAFETY: the start of a str is a valid byte offset, and is the boundary of a codepoint
             // by definition of a str.
-            let (empty, chunk) = unsafe { self.s.split_at_checked(0).unwrap_unchecked() };
-
-            self.s = empty;
-            // chunk is empty if there is no remainder or if remainder was already returned
-            if chunk.is_empty() {
-                None
-            } else {
-                Some(chunk)
-            }
+            .unwrap_or((0, char::REPLACEMENT_CHARACTER));
+        // SAFETY: index is a valid byte offset on the boundary of a code point by above
+        let (rest, chunk) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
+        self.s = rest;
+        // chunk is empty if index is 0 and (no remainder or remainder was already returned)
+        if chunk.is_empty() {
+            None
+        } else {
+            Some(chunk)
         }
     }
 }
@@ -378,13 +370,12 @@ impl<'s> Iterator for StrRChunks<'s> {
 /// [`remaining`]: StrRChunksExact::remaining
 pub struct StrRChunksExact<'s> {
     s: &'s str,
-    // chunk size must be non-zero
-    chunk_size: usize,
+    // 0 chunk_size makes no sense
+    chunk_size: NonZeroUsize,
 }
 
 impl<'s> StrRChunksExact<'s> {
-    fn new(s: &'s str, chunk_size: usize) -> Self {
-        assert!(chunk_size != 0, "chunk size must be non-zero");
+    fn new(s: &'s str, chunk_size: NonZeroUsize) -> Self {
         Self { s, chunk_size }
     }
     #[must_use]
@@ -399,7 +390,7 @@ impl<'s> Iterator for StrRChunksExact<'s> {
     type Item = &'s str;
     fn next(&mut self) -> Option<&'s str> {
         // will short-circuit None if s.len() < chunk_size, leaving the remainder in s
-        let (index, _) = valid_split_points(self.s).nth_back(self.chunk_size)?;
+        let (index, _) = valid_split_points(self.s).nth_back(self.chunk_size.get())?;
 
         // SAFETY: index is a valid byte offset on the boundary of a code point by above
         let (rest, chunk) = unsafe { self.s.split_at_checked(index).unwrap_unchecked() };
@@ -440,31 +431,11 @@ mod tests {
             &["0", "1", "2", "3", "4", "5"],
             ""
         );
-        assert_chunks!(
-            straight_str.str_chunks(2),
-            &["01", "23", "45"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks(3),
-            &["012", "345"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks(4),
-            &["0123", "45"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks(5),
-            &["01234", "5"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks(6),
-            &["012345"],
-            ""
-        );
+        assert_chunks!(straight_str.str_chunks(2), &["01", "23", "45"], "");
+        assert_chunks!(straight_str.str_chunks(3), &["012", "345"], "");
+        assert_chunks!(straight_str.str_chunks(4), &["0123", "45"], "");
+        assert_chunks!(straight_str.str_chunks(5), &["01234", "5"], "");
+        assert_chunks!(straight_str.str_chunks(6), &["012345"], "");
     }
     #[test]
     fn str_chunks_exact() {
@@ -474,31 +445,11 @@ mod tests {
             &["0", "1", "2", "3", "4", "5"],
             ""
         );
-        assert_chunks!(
-            straight_str.str_chunks_exact(2),
-            &["01", "23", "45"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks_exact(3),
-            &["012", "345"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_chunks_exact(4),
-            &["0123"],
-            "45"
-        );
-        assert_chunks!(
-            straight_str.str_chunks_exact(5),
-            &["01234"],
-            "5"
-        );
-        assert_chunks!(
-            straight_str.str_chunks_exact(6),
-            &["012345"],
-            ""
-        );
+        assert_chunks!(straight_str.str_chunks_exact(2), &["01", "23", "45"], "");
+        assert_chunks!(straight_str.str_chunks_exact(3), &["012", "345"], "");
+        assert_chunks!(straight_str.str_chunks_exact(4), &["0123"], "45");
+        assert_chunks!(straight_str.str_chunks_exact(5), &["01234"], "5");
+        assert_chunks!(straight_str.str_chunks_exact(6), &["012345"], "");
     }
     #[test]
     fn str_rchunks() {
@@ -508,31 +459,11 @@ mod tests {
             &["5", "4", "3", "2", "1", "0"],
             ""
         );
-        assert_chunks!(
-            straight_str.str_rchunks(2),
-            &["45", "23", "01"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks(3),
-            &["345", "012"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks(4),
-            &["2345", "01"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks(5),
-            &["12345", "0"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks(6),
-            &["012345"],
-            ""
-        );
+        assert_chunks!(straight_str.str_rchunks(2), &["45", "23", "01"], "");
+        assert_chunks!(straight_str.str_rchunks(3), &["345", "012"], "");
+        assert_chunks!(straight_str.str_rchunks(4), &["2345", "01"], "");
+        assert_chunks!(straight_str.str_rchunks(5), &["12345", "0"], "");
+        assert_chunks!(straight_str.str_rchunks(6), &["012345"], "");
     }
     #[test]
     fn str_rchunks_exact() {
@@ -542,55 +473,35 @@ mod tests {
             &["5", "4", "3", "2", "1", "0"],
             ""
         );
-        assert_chunks!(
-            straight_str.str_rchunks_exact(2),
-            &["45", "23", "01"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks_exact(3),
-            &["345", "012"],
-            ""
-        );
-        assert_chunks!(
-            straight_str.str_rchunks_exact(4),
-            &["2345"],
-            "01"
-        );
-        assert_chunks!(
-            straight_str.str_rchunks_exact(5),
-            &["12345"],
-            "0"
-        );
-        assert_chunks!(
-            straight_str.str_rchunks_exact(6),
-            &["012345"],
-            ""
-        );
+        assert_chunks!(straight_str.str_rchunks_exact(2), &["45", "23", "01"], "");
+        assert_chunks!(straight_str.str_rchunks_exact(3), &["345", "012"], "");
+        assert_chunks!(straight_str.str_rchunks_exact(4), &["2345"], "01");
+        assert_chunks!(straight_str.str_rchunks_exact(5), &["12345"], "0");
+        assert_chunks!(straight_str.str_rchunks_exact(6), &["012345"], "");
     }
     #[test]
     fn emoji() {
         // these are multi-byte characters
         let s = "🥺💙😵";
-        assert_chunks!(
-            s.str_chunks(2),
-            &["🥺💙", "😵"],
-            ""
-        );
-        assert_chunks!(
-            s.str_chunks_exact(2),
-            &["🥺💙"],
-            "😵"
-        );
-        assert_chunks!(
-            s.str_rchunks(2),
-            &["💙😵", "🥺"],
-            ""
-        );
-        assert_chunks!(
-            s.str_rchunks_exact(2),
-            &["💙😵"],
-            "🥺"
-        );
+        assert_chunks!(s.str_chunks(2), &["🥺💙", "😵"], "");
+        assert_chunks!(s.str_chunks_exact(2), &["🥺💙"], "😵");
+        assert_chunks!(s.str_rchunks(2), &["💙😵", "🥺"], "");
+        assert_chunks!(s.str_rchunks_exact(2), &["💙😵"], "🥺");
+    }
+    #[test]
+    fn empty() {
+        let s = "";
+        assert_chunks!(s.str_chunks(2), &[], "");
+        assert_chunks!(s.str_chunks_exact(2), &[], "");
+        assert_chunks!(s.str_rchunks(2), &[], "");
+        assert_chunks!(s.str_rchunks_exact(2), &[], "");
+    }
+    #[test]
+    fn short() {
+        let s = "f";
+        assert_chunks!(s.str_chunks(2), &["f"], "");
+        assert_chunks!(s.str_chunks_exact(2), &[], "f");
+        assert_chunks!(s.str_rchunks(2), &["f"], "");
+        assert_chunks!(s.str_rchunks_exact(2), &[], "f");
     }
 }
