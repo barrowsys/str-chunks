@@ -568,4 +568,29 @@ mod tests {
             ""
         );
     }
+    #[test]
+    fn emoji() {
+        // these are multi-byte characters
+        let s = "🥺💙😵";
+        assert_chunks!(
+            s.str_chunks(2),
+            &["🥺💙", "😵"],
+            ""
+        );
+        assert_chunks!(
+            s.str_chunks_exact(2),
+            &["🥺💙"],
+            "😵"
+        );
+        assert_chunks!(
+            s.str_rchunks(2),
+            &["💙😵", "🥺"],
+            ""
+        );
+        assert_chunks!(
+            s.str_rchunks_exact(2),
+            &["💙😵"],
+            "🥺"
+        );
+    }
 }
