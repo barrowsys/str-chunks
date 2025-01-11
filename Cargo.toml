@@ -1,0 +1,12 @@
+[package]
+name = "str-chunks"
+version = "0.1.0"
+edition = "2021"
+authors = ["barrow <barrow@tilde.team"]
+description = "implements char-wise chunked iteration of str"
+license-file = "LICENSE.txt"
+repository = "https://github.com/barrowsys/str-chunks"
+categories = []
+
+[lib]
+path = "src/str_chunks.rs"
